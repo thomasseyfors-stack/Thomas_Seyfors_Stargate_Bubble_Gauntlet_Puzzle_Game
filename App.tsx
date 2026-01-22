@@ -3,11 +3,14 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { OrbState, FiredOrbState, ParticleState, Vector2D, LevelData } from './types';
 import { GameStatus } from './types';
 import { GAME_WIDTH, GAME_HEIGHT, ORB_DIAMETER, ORB_RADIUS, GRID_COLS, ORB_COLORS, ORB_SYMBOLS, ORB_SPEED, SHOTS_BEFORE_CEILING_DROP, CEILING_ROW_LIMIT, LEVELS, NUM_CHEVRONS } from './constants';
-import { playSfx, unlockAudio } from './sfx';
+// import { playSfx, unlockAudio } from './sfx'; // SFX removed
 
 // --- Helper Functions ---
 const getPositionFromGrid = (row: number, col: number): Vector2D => {
-  const x = col * ORB_DIAMETER + (row % 2) * ORB_RADIUS + ORB_RADIUS * 3;
+  // Centering logic for the new 12-column grid
+  const gridWidth = GRID_COLS * ORB_DIAMETER + ORB_RADIUS;
+  const xOffset = (GAME_WIDTH - gridWidth) / 2;
+  const x = xOffset + col * ORB_DIAMETER + (row % 2) * ORB_RADIUS;
   const y = row * (ORB_DIAMETER - 6) + ORB_RADIUS;
   return { x, y };
 };
@@ -15,24 +18,28 @@ const getPositionFromGrid = (row: number, col: number): Vector2D => {
 const getDistance = (p1: Vector2D, p2: Vector2D) => Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
 
 // --- Sub-Components ---
-const Orb: React.FC<{ orb: OrbState | FiredOrbState }> = React.memo(({ orb }) => {
+const Orb: React.FC<{ orb: OrbState | FiredOrbState; isLocked?: boolean }> = React.memo(({ orb, isLocked }) => {
     const jiggleX = 'jiggle' in orb && orb.jiggle ? (Math.random() - 0.5) * (orb.jiggle / 2) : 0;
     const jiggleY = 'jiggle' in orb && orb.jiggle ? (Math.random() - 0.5) * (orb.jiggle / 2) : 0;
+    
+    const orbColor = ORB_COLORS[orb.color];
+    const orbStyle = {
+        left: orb.position.x,
+        top: orb.position.y,
+        width: ORB_DIAMETER,
+        height: ORB_DIAMETER,
+        backgroundColor: orbColor,
+        transform: `translate(calc(-50% + ${jiggleX}px), calc(-50% + ${jiggleY}px))`,
+        boxShadow: `inset 0 0 10px #000a, 0 0 10px ${orbColor}`,
+        '--orb-color': orbColor, // CSS variable for animation
+    } as React.CSSProperties;
 
     return (
         <div
-            style={{
-                left: orb.position.x,
-                top: orb.position.y,
-                width: ORB_DIAMETER,
-                height: ORB_DIAMETER,
-                backgroundColor: ORB_COLORS[orb.color],
-                transform: `translate(calc(-50% + ${jiggleX}px), calc(-50% + ${jiggleY}px))`,
-                boxShadow: `inset 0 0 10px #000a, 0 0 10px ${ORB_COLORS[orb.color]}`,
-            }}
-            className="absolute rounded-full transition-all duration-100 flex items-center justify-center"
+            style={orbStyle}
+            className={`absolute rounded-full transition-all duration-100 flex items-center justify-center ${isLocked ? 'animate-pulse-glow' : ''}`}
         >
-            <span className="text-2xl text-black/50 font-bold select-none">
+            <span className={`text-2xl font-bold select-none ${isLocked ? 'text-white/90' : 'text-black/50'}`}>
                 {ORB_SYMBOLS[orb.color]}
             </span>
         </div>
@@ -46,15 +53,29 @@ const ParticleComp: React.FC<{ state: ParticleState }> = React.memo(({ state }) 
     />
 ));
 
-const Chevron: React.FC<{ symbol: string; isLocked: boolean; angle: number; }> = React.memo(({ symbol, isLocked, angle }) => (
-    <div className="absolute top-1/2 left-1/2 w-16 h-20 -m-8" style={{ transform: `rotate(${angle}deg) translate(280px)`}}>
-        <div className={`w-full h-full bg-gray-600 transition-all duration-300 ${isLocked ? 'bg-orange-500 shadow-[0_0_15px_5px_rgba(255,165,0,0.7)]' : 'bg-gray-700'}`} style={{ clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)'}}>
-            <div className="text-center text-4xl mt-4 font-bold" style={{ transform: `rotate(${-angle}deg)`}}>
-                {isLocked ? 'V' : symbol}
+const Chevron: React.FC<{ symbol: string; isLocked: boolean; angle: number; }> = React.memo(({ symbol, isLocked, angle }) => {
+    const chevronStyle = {
+        '--orb-color': 'rgba(255, 165, 0, 1)', // Orange for the glow
+        clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
+    } as React.CSSProperties;
+    
+    const inactiveStyle = {
+         clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
+    }
+
+    return (
+        <div className="absolute top-1/2 left-1/2 w-16 h-20 -m-8" style={{ transform: `rotate(${angle}deg) translate(280px)`}}>
+            <div
+                style={isLocked ? chevronStyle : inactiveStyle}
+                className={`w-full h-full bg-gray-600 transition-all duration-300 ${isLocked ? 'bg-orange-500 animate-pulse-glow' : 'bg-gray-700'}`}
+            >
+                <div className={`text-center text-4xl mt-4 font-bold transition-colors ${isLocked ? 'text-yellow-200' : 'text-gray-400'}`} style={{ transform: `rotate(${-angle}deg)`}}>
+                    {symbol}
+                </div>
             </div>
         </div>
-    </div>
-));
+    )
+});
 
 const StargateFrame: React.FC<{lockedChevrons: Set<number>}> = React.memo(({ lockedChevrons }) => (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -66,6 +87,21 @@ const StargateFrame: React.FC<{lockedChevrons: Set<number>}> = React.memo(({ loc
     </div>
 ));
 
+const AimingLine: React.FC<{ points: Vector2D[] }> = React.memo(({ points }) => {
+    if (points.length < 2) return null;
+    const pathData = points.map((p, i) => (i === 0 ? 'M' : 'L') + `${p.x} ${p.y}`).join(' ');
+    return (
+        <svg className="absolute top-0 left-0 w-full h-full pointer-events-none z-10">
+            <path
+                d={pathData}
+                stroke="rgba(255, 255, 255, 0.5)"
+                strokeWidth="3"
+                strokeDasharray="5, 10"
+                fill="none"
+            />
+        </svg>
+    );
+});
 
 const Launcher: React.FC<{ angle: number, currentOrbColor: string, nextOrbColor: string, currentOrbSymbol: string, nextOrbSymbol: string }> = React.memo(({ angle, currentOrbColor, nextOrbColor, currentOrbSymbol, nextOrbSymbol }) => (
     <>
@@ -99,28 +135,41 @@ export default function App() {
   const [shotsUntilDrop, setShotsUntilDrop] = useState(SHOTS_BEFORE_CEILING_DROP);
   const [launcherAngle, setLauncherAngle] = useState(0);
   const [lockedChevrons, setLockedChevrons] = useState<Set<number>>(new Set());
+  const [aimingLine, setAimingLine] = useState<Vector2D[]>([]);
 
   const gameAreaRef = useRef<HTMLDivElement>(null);
   const animationFrameId = useRef<number>();
   const prevChevronCount = useRef(0);
 
   const getAvailableColors = useCallback(() => {
-    const colorsInGrid = new Set<number>();
-    grid.forEach(orb => {
-        if (orb.color < NUM_CHEVRONS) colorsInGrid.add(orb.color);
-    });
-    return colorsInGrid.size > 0 ? Array.from(colorsInGrid) : ORB_SYMBOLS.map((_, i) => i).slice(0, NUM_CHEVRONS);
-  }, [grid]);
+    const colorsOnGrid = new Set<number>();
+    const neededColors = new Set<number>();
 
-  const generateNewOrb = useCallback(() => {
-    const availableColors = getAvailableColors();
-    const newColor = availableColors[Math.floor(Math.random() * availableColors.length)];
-    if (!currentOrb) {
-        setCurrentOrb({ id: Date.now(), position: {x: GAME_WIDTH / 2, y: GAME_HEIGHT - 30}, velocity: {x: 0, y: 0}, color: nextOrbColor });
+    // All colors for unlocked chevrons are needed to win
+    for (let i = 0; i < NUM_CHEVRONS; i++) {
+        if (!lockedChevrons.has(i)) {
+            neededColors.add(i);
+        }
     }
-    setNextOrbColor(newColor);
-  }, [getAvailableColors, currentOrb, nextOrbColor]);
 
+    // Also consider colors on the grid to allow clearing existing orbs
+    grid.forEach(orb => {
+        colorsOnGrid.add(orb.color);
+    });
+    
+    // The final pool is the union of colors needed to win and colors on the board.
+    const finalPool = Array.from(new Set([...neededColors, ...colorsOnGrid]));
+
+    if (finalPool.length > 0) {
+        return finalPool;
+    }
+    
+    // Fallback in case the grid is cleared on the winning shot
+    if (neededColors.size > 0) return Array.from(neededColors);
+
+    // Absolute fallback (shouldn't be reached in normal play)
+    return [0];
+  }, [grid, lockedChevrons]);
 
   const loadLevel = useCallback((index: number) => {
     const levelData = LEVELS[index];
@@ -139,14 +188,13 @@ export default function App() {
     setShotsUntilDrop(SHOTS_BEFORE_CEILING_DROP);
     setCurrentOrb(null);
     setNextOrbColor(Math.floor(Math.random() * NUM_CHEVRONS));
-    generateNewOrb();
     setLockedChevrons(new Set());
     setFallingOrbs([]);
     prevChevronCount.current = 0;
-  }, [generateNewOrb]);
+  }, []);
   
   const startGame = useCallback(() => {
-    unlockAudio();
+    // unlockAudio();
     setLevelIndex(0);
     setScore(0);
     loadLevel(0);
@@ -170,7 +218,7 @@ export default function App() {
 
   const handleFire = useCallback(() => {
     if (firedOrb || !currentOrb) return;
-    playSfx('fire');
+    // playSfx('fire');
     const angle = launcherAngle + Math.PI / 2;
     setFiredOrb({
         ...currentOrb,
@@ -181,7 +229,52 @@ export default function App() {
     });
     setCurrentOrb(null);
     setShotsUntilDrop(prev => prev - 1);
+    setAimingLine([]);
   }, [firedOrb, currentOrb, launcherAngle]);
+
+  const calculateAimingLine = useCallback((angle: number, grid: Map<string, OrbState>): Vector2D[] => {
+    const startPos = { x: GAME_WIDTH / 2, y: GAME_HEIGHT - 30 };
+    let currentPos = { ...startPos };
+    const step = 5;
+    const velocity = {
+        x: -Math.cos(angle + Math.PI / 2) * step,
+        y: -Math.sin(angle + Math.PI / 2) * step,
+    };
+
+    const points: Vector2D[] = [startPos];
+    const gridWidth = GRID_COLS * ORB_DIAMETER + ORB_RADIUS;
+    const xOffset = (GAME_WIDTH - gridWidth) / 2;
+    const leftWall = xOffset - ORB_RADIUS;
+    const rightWall = xOffset + gridWidth + ORB_RADIUS;
+    const topWall = ORB_RADIUS;
+
+    for (let i = 0; i < 200; i++) {
+        currentPos.x += velocity.x;
+        currentPos.y += velocity.y;
+
+        if (currentPos.x < leftWall || currentPos.x > rightWall) {
+            velocity.x *= -1;
+            currentPos.x = Math.max(leftWall, Math.min(rightWall, currentPos.x));
+            points.push({ ...currentPos });
+        }
+
+        if (currentPos.y < topWall) {
+            points.push({ ...currentPos, y: topWall });
+            break;
+        }
+
+        let hit = false;
+        for (const orb of grid.values()) {
+            if (getDistance(currentPos, orb.position) < ORB_DIAMETER) {
+                points.push({ ...currentPos });
+                hit = true;
+                break;
+            }
+        }
+        if (hit) break;
+    }
+    return points;
+  }, []);
   
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
       if(!gameAreaRef.current) return;
@@ -189,8 +282,30 @@ export default function App() {
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
       const angle = Math.atan2(mouseY - (GAME_HEIGHT - 30), mouseX - GAME_WIDTH / 2);
-      setLauncherAngle(angle - Math.PI / 2);
-  }, []);
+      const newAngle = angle - Math.PI / 2;
+      setLauncherAngle(newAngle);
+
+      if (status === GameStatus.Playing && currentOrb) {
+        const linePoints = calculateAimingLine(newAngle, grid);
+        setAimingLine(linePoints);
+      }
+  }, [grid, status, currentOrb, calculateAimingLine]);
+
+  // Effect to load a new orb into the launcher when needed
+  useEffect(() => {
+    if (status === GameStatus.Playing && !currentOrb && !firedOrb) {
+      const availableColors = getAvailableColors();
+      const newNextColor = availableColors[Math.floor(Math.random() * availableColors.length)];
+      
+      setCurrentOrb({
+        id: Date.now(),
+        position: { x: GAME_WIDTH / 2, y: GAME_HEIGHT - 30 },
+        velocity: { x: 0, y: 0 },
+        color: nextOrbColor
+      });
+      setNextOrbColor(newNextColor);
+    }
+  }, [status, currentOrb, firedOrb, nextOrbColor, getAvailableColors]);
 
   const gameLoop = useCallback(() => {
     // Update particles
@@ -203,7 +318,6 @@ export default function App() {
     setGrid(prevGrid => {
         const newGrid = new Map(prevGrid);
         let changed = false;
-        // FIX: Explicitly type `orb` and `key` to handle TypeScript inference issue.
         newGrid.forEach((orb: OrbState, key) => {
             if (orb.jiggle && orb.jiggle > 0) {
                 newGrid.set(key, {...orb, jiggle: orb.jiggle - 1});
@@ -214,7 +328,6 @@ export default function App() {
     });
 
     if (!firedOrb) {
-        if (!currentOrb) generateNewOrb();
         animationFrameId.current = requestAnimationFrame(gameLoop);
         return;
     };
@@ -224,7 +337,12 @@ export default function App() {
     newOrb.position.y += newOrb.velocity.y;
     
     // Wall bounce
-    if (newOrb.position.x < ORB_RADIUS + 120 || newOrb.position.x > GAME_WIDTH - ORB_RADIUS - 120) {
+    const gridWidth = GRID_COLS * ORB_DIAMETER + ORB_RADIUS;
+    const xOffset = (GAME_WIDTH - gridWidth) / 2;
+    const leftWall = xOffset - ORB_RADIUS;
+    const rightWall = xOffset + gridWidth + ORB_RADIUS;
+    
+    if (newOrb.position.x < leftWall || newOrb.position.x > rightWall) {
         newOrb.velocity.x *= -1;
     }
 
@@ -248,7 +366,7 @@ export default function App() {
     }
 
     if(snapped) {
-        playSfx('snap');
+        // playSfx('snap');
         // Snap to grid
         const newGridPos = { row: 0, col: 0 };
         let minDist = Infinity;
@@ -289,7 +407,7 @@ export default function App() {
         const matches = findMatches(newGrid, newOrbInGrid);
         
         if (matches.length >= 3) {
-            playSfx('match');
+            // playSfx('match');
             const matchedColor = newOrbInGrid.color;
             setLockedChevrons(prev => new Set(prev).add(matchedColor));
 
@@ -310,13 +428,27 @@ export default function App() {
             }
         }
 
+        // --- NEW: Board Clear Win Condition ---
+        // If a move results in the board being empty, it's a win.
+        // This handles the "glitch" where clearing the top row caused all orbs to fall.
+        if (newGrid.size === 0 && status === GameStatus.Playing) {
+            setGrid(newGrid);
+            setFiredOrb(null);
+            // playSfx('gate_open');
+            setScore(s => s + 1000); // Board clear bonus!
+            setStatus(GameStatus.LevelClear);
+            // This return is important to stop processing for this frame
+            return;
+        }
+
+
         setGrid(newGrid);
         setFiredOrb(null);
 
         // Game over check
         if (newOrbInGrid.gridPos.row >= CEILING_ROW_LIMIT) {
              setStatus(GameStatus.GameOver);
-             playSfx('game_over');
+             // playSfx('game_over');
              return;
         }
 
@@ -324,31 +456,42 @@ export default function App() {
        setFiredOrb(newOrb);
     }
     animationFrameId.current = requestAnimationFrame(gameLoop);
-  }, [firedOrb, grid, currentOrb, generateNewOrb]);
+  }, [firedOrb, grid, status, levelIndex, loadLevel]);
 
   // Win condition check
   useEffect(() => {
+    // Only process win condition if we are currently in "Playing" state
+    if (status !== GameStatus.Playing) return;
+
     if (lockedChevrons.size > prevChevronCount.current) {
         if (lockedChevrons.size === NUM_CHEVRONS) {
-            playSfx('gate_open');
+            // playSfx('gate_open');
             setStatus(GameStatus.LevelClear);
-            setTimeout(() => {
-                const nextLevel = levelIndex + 1;
-                if (nextLevel < LEVELS.length) {
-                    setLevelIndex(nextLevel);
-                    loadLevel(nextLevel);
-                    setStatus(GameStatus.Playing);
-                } else {
-                    setStatus(GameStatus.GameOver); // Or a You Win screen
-                    playSfx('game_over');
-                }
-            }, 3000);
         } else {
-            playSfx('chevron_lock');
+            // playSfx('chevron_lock');
         }
     }
     prevChevronCount.current = lockedChevrons.size;
-  }, [lockedChevrons, levelIndex, loadLevel]);
+  }, [lockedChevrons, status]);
+
+  // Level transition effect
+  useEffect(() => {
+    if (status === GameStatus.LevelClear) {
+        // Use a timeout to show the "Level Clear" message before proceeding
+        const timer = setTimeout(() => {
+            const nextLevel = levelIndex + 1;
+            if (nextLevel < LEVELS.length) {
+                setLevelIndex(nextLevel);
+                loadLevel(nextLevel);
+                setStatus(GameStatus.Playing);
+            } else {
+                setStatus(GameStatus.GameOver); // Or a "You Win!" screen
+                // playSfx('game_over');
+            }
+        }, 3000);
+        return () => clearTimeout(timer);
+    }
+  }, [status, levelIndex, loadLevel]);
 
   // Handle ceiling drop
   useEffect(() => {
@@ -365,7 +508,7 @@ export default function App() {
             });
              if (maxRow >= CEILING_ROW_LIMIT) {
                  setStatus(GameStatus.GameOver);
-                 playSfx('game_over');
+                 // playSfx('game_over');
              }
             return newGrid;
         });
@@ -386,7 +529,7 @@ export default function App() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-4">
       <h1 className="text-4xl font-bold text-cyan-400 mb-4 tracking-widest">STARGATE: BUBBLE GAUNTLET</h1>
       <div 
-        className="relative bg-black border-4 border-gray-600 shadow-2xl shadow-cyan-500/20" 
+        className="relative bg-black border-4 border-gray-600 shadow-2xl shadow-cyan-500/20 overflow-hidden" 
         style={{ width: GAME_WIDTH, height: GAME_HEIGHT }}
       >
         <StargateFrame lockedChevrons={lockedChevrons} />
@@ -426,9 +569,10 @@ export default function App() {
                 </div>
             )}
             
-            {Array.from(grid.values()).map((orb: OrbState) => <Orb key={orb.id} orb={orb} />)}
-            {firedOrb && <Orb orb={firedOrb} />}
-            {fallingOrbs.map((orb: OrbState) => <Orb key={orb.id} orb={orb} />)}
+            <AimingLine points={aimingLine} />
+            {Array.from(grid.values()).map((orb: OrbState) => <Orb key={orb.id} orb={orb} isLocked={lockedChevrons.has(orb.color)} />)}
+            {firedOrb && <Orb orb={firedOrb} isLocked={false} />}
+            {fallingOrbs.map((orb: OrbState) => <Orb key={orb.id} orb={orb} isLocked={lockedChevrons.has(orb.color)} />)}
             {particles.map(p => <ParticleComp key={p.id} state={p} />)}
             
             {status === GameStatus.Playing && currentOrb && <Launcher angle={launcherAngle} currentOrbColor={ORB_COLORS[currentOrb.color]} nextOrbColor={ORB_COLORS[nextOrbColor]} currentOrbSymbol={ORB_SYMBOLS[currentOrb.color]} nextOrbSymbol={ORB_SYMBOLS[nextOrbColor]} />}
@@ -518,6 +662,6 @@ const getNeighbors = (row: number, col: number): string[] => {
     }
 
     return neighbors
-        .filter(n => n.r >= 0 && n.c >= 0 && n.c < GRID_COLS - 3)
+        .filter(n => n.r >= 0 && n.c >= 0 && n.c < GRID_COLS)
         .map(n => `${n.r},${n.c}`);
 }

@@ -3,14 +3,14 @@
 
 const sfxCache: { [key: string]: HTMLAudioElement } = {};
 
-// NOTE: These are placeholder paths. Actual sound files would need to be hosted.
+// Valid sound file URLs to replace the broken placeholders.
 const sfxFiles = {
-  fire: 'https://cdn.jsdelivr.net/gh/dev-new-experience/workspace-template-react/sfx/fire.mp3',
-  snap: 'https://cdn.jsdelivr.net/gh/dev-new-experience/workspace-template-react/sfx/snap.mp3',
-  match: 'https://cdn.jsdelivr.net/gh/dev-new-experience/workspace-template-react/sfx/match.mp3',
-  chevron_lock: 'https://cdn.jsdelivr.net/gh/dev-new-experience/workspace-template-react/sfx/chevron_lock.mp3',
-  gate_open: 'https://cdn.jsdelivr.net/gh/dev-new-experience/workspace-template-react/sfx/gate_open.mp3',
-  game_over: 'https://cdn.jsdelivr.net/gh/dev-new-experience/workspace-template-react/sfx/game_over.mp3',
+  fire: 'https://cdn.freesound.org/previews/220/220172_3982709-lq.mp3', // Sci-fi laser fire
+  snap: 'https://cdn.freesound.org/previews/51/51899_48425-lq.mp3', // Soft pop/snap
+  match: 'https://cdn.freesound.org/previews/391/391712_5121236-lq.mp3', // Positive chime
+  chevron_lock: 'https://cdn.freesound.org/previews/215/215694_4016738-lq.mp3', // Mechanical lock
+  gate_open: 'https://cdn.freesound.org/previews/415/415720_6142149-lq.mp3', // Whoosh/activation
+  game_over: 'https://cdn.freesound.org/previews/403/403405_5121236-lq.mp3', // Sad fail sound
 };
 
 let isAudioUnlocked = false;
